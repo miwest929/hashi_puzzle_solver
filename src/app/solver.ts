@@ -48,6 +48,7 @@ const SINGLE_CONNECTION_VALUE = '-';
 const DOUBLE_CONNECTION_VALUE = '=';
 
 interface PuzzleNode {
+    index: number;
     row: number;
     col: number;
     east: number | null;
@@ -78,7 +79,7 @@ function multiDimRepeat<T>(value: T, rowCount: number, colCount: number): T[][] 
     return arr;
 }
 
-class PuzzleGraph {
+class HashiGraph {
     state: StringState;
     nodes: PuzzleNode[];
 
@@ -96,7 +97,6 @@ class PuzzleGraph {
     addNode(node: PuzzleNode) {
         this.nodes.push(node);
         this.updateNodeCache(node, this.nodes.length - 1);
-        // this.nodeCache[ this.keyByNode(node) ] = this.nodes.length - 1;
     }
 
     updateNodeCache(node: PuzzleNode, idx: number) {
@@ -104,18 +104,12 @@ class PuzzleGraph {
     }
 
     getNodeAt(row, col): PuzzleNode {
-        // const idx = this.nodeCache[ this.keyByRowCol(row, col) ];
         return this.nodes[ this.getNodeIndexAt(row, col) ];
     }
 
     getNodeIndexAt(row: number, col: number): number {
         return this.nodeCache[ this.keyByRowCol(row, col) ];
     }
-
-    // makeConnection(srcRow: number, srcCol: number) {
-    //     const n = this.getNodeAt(srcRow, srcCol);
-    //     //n.eastConn();
-    // }
 
     getNodeWithLowestBridges() {
         return this.nodes.filter((n) => n.connections >= 1).sort((n1, n2) => {
@@ -168,7 +162,7 @@ class PuzzleGraph {
     }
 
     static fromState(state: StringState) {
-        const g: PuzzleGraph = new PuzzleGraph(state);
+        const g: HashiGraph = new HashiGraph(state);
 
         // create nodes
         state.map((s: string, row: number) => {
@@ -176,6 +170,7 @@ class PuzzleGraph {
             for (let col = 0; col < s.length; col++) {
                 if (g.isNodeCell(s[col])) {
                     let n = {
+                        index: g.nodes.length,
                         row: row,
                         col: col,
                         connections: parseInt(s[col], 10),
@@ -248,6 +243,43 @@ class PuzzleGraph {
         return `[${row},${col}]`;
     }
 
+    createBridgeBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: number) {
+        // if the two nodes are not actuallly connected
+        if (this.adjMatrix[srcNodeIndex][destNodeIndex] === 0 && this.adjMatrix[destNodeIndex][srcNodeIndex] === 0) {
+            return;
+        }
+
+        this.adjMatrix[srcNodeIndex][destNodeIndex] = bridgeCount + 1;
+        this.nodes[srcNodeIndex].connections -= bridgeCount;
+
+        this.adjMatrix[destNodeIndex][srcNodeIndex] = bridgeCount + 1;
+        this.nodes[destNodeIndex].connections -= bridgeCount; 
+    }
+
+    applyLayoutEncoding(node: PuzzleNode, encoding: string) {
+        const srcNodeIndex = node.index;
+
+        if (node.north && encoding[0] != '0') {
+            const bridgeCount = parseInt(encoding[0], 10);
+            this.createBridgeBetween(srcNodeIndex, node.north, bridgeCount);
+        }
+
+        if (node.east && encoding[1] != '0') {
+            const bridgeCount = parseInt(encoding[1], 10);
+            this.createBridgeBetween(srcNodeIndex, node.east, bridgeCount);
+        }
+
+        if (node.south && encoding[2] != '0') {
+            const bridgeCount = parseInt(encoding[2], 10);
+            this.createBridgeBetween(srcNodeIndex, node.south, bridgeCount);
+        }
+
+        if (node.west && encoding[3] != '0') {
+            const bridgeCount = parseInt(encoding[3], 10);
+            this.createBridgeBetween(srcNodeIndex, node.west, bridgeCount);
+        }
+    }
+
     computeAllLayoutNumbers(node: PuzzleNode): string[] {
         const adjCount = +!!(node.east || node.east === 0) + 
                          +!!(node.west || node.west === 0) +
@@ -299,7 +331,6 @@ class PuzzleGraph {
 
             return normalized.join('');
         });
-        // return encodings;
     }
 
     computeCombos_recur(target: number, neighborsLeft: number, numsCount: number, currEncoding: string): string[] {
@@ -333,12 +364,19 @@ class HashiSolver {
     }
 
     solve() {
-        const g: PuzzleGraph = PuzzleGraph.fromState(this.initialState);
-
-        const node = g.nodes[1]; // g.getNodeWithLowestBridges();
         console.log(this.initialState);
+
+        const g: HashiGraph = HashiGraph.fromState(this.initialState);
+        const node = g.nodes[7]; // g.getNodeWithLowestBridges();
         console.log(node);
-        console.log(g.computeAllLayoutNumbers(node));
+        const layoutEncodings = g.computeAllLayoutNumbers(node);
+        console.log(layoutEncodings);
+
+        for (let encoding in layoutEncodings) {
+            g.applyLayoutEncoding(node, encoding);
+        }
+
+        // g.applyLayoutEncoding(node, layoutEncodes[0]);
 
         // console.log(g.computeAllLayoutNumbers(g.nodes[2]));
 
@@ -353,109 +391,6 @@ class HashiSolver {
         // g.createSingleConnection(lowestNode, lowestNode.east );
 
         // const state = new PuzzleState(this.initialState);
-    }
-}
-
-class PuzzleState {
-    state: string[];
-    nodeMap: any;
-
-    constructor(state: string[]) {
-        this.state = state;
-        this.nodeMap = {};
-    }
-
-    solve() {
-        const nodes = this.nodes();
-        this.buildGraph(nodes);
-
-        const nodesByLeastConns = nodes.filter((n) => n.connections > 0).sort((n1, n2) => {
-            return (n1.edgeCount - n2.edgeCount);
-        });
-        const firstNode = nodesByLeastConns.shift();
-        console.log(`row = ${nodesByLeastConns[0].row}, col = ${nodesByLeastConns[0].col}, maxConns = ${this.maxConnections(nodesByLeastConns[0])}, edgeCount = ${nodesByLeastConns[0].edgeCount}`);
-        // console.log(nodes);
-
-        const [minConn, maxConn] = this.maxConnections(nodes[0]);
-        // if (nodes[0].connections > )
-    }
-
-    keyByNode(n: PuzzleNode) {
-        return `[${n.row},${n.col}]`;
-    }
-
-    keyByRowCol(row: number, col: number) {
-        return `[${row},${col}]`;
-    }
-
-    // @return ( number[] ) -> [<lowestConnectionsPossible>, <maxConnectionsPossible>]
-    maxConnections(node: PuzzleNode): number[] {
-        const connCount = (node.east ? 1 : 0) + (node.west ? 1 : 0) + (node.north ? 1 : 0) + (node.south ? 1 : 0);
-
-        return [connCount, connCount * 2];
-    }
-
-    isNodeCell(c: string): boolean {
-        return c != EMPTY_CELL_VALUE && c != SINGLE_CONNECTION_VALUE && c != DOUBLE_CONNECTION_VALUE;
-    }
-
-    nodes(): PuzzleNode[] {
-        return this.state.map((s: string, row: number) => {
-            const nodes = [];
-            for (let col = 0; col < s.length; col++) {
-                if (this.isNodeCell(s[col])) {
-                    let n = {
-                        row: row,
-                        col: col,
-                        connections: parseInt(s[col], 10),
-                        east: null,
-                        west: null,
-                        north: null,
-                        south: null,
-                        edgeCount: 0
-                    };
-                    nodes.push(n);
-                    this.nodeMap[this.keyByNode(n)] = n
-                }
-            };
-            return nodes;
-        }).flat();
-    }
-
-    buildGraph(nodes: PuzzleNode[]) {
-        //nodes.forEach((n) => {
-        for (let i = 0; i < nodes.length; i++) {
-            const n = nodes[i];
-            for (let col = n.col - 1; col >= 0; col--) {
-                if (this.state[n.row][col] >= '1' && this.state[n.row][col] <= '6') {
-                    //console.log(`FOUND EAST for NODE (${n.row}, ${n.col}) is at (${n.row}, ${col})`);
-                    // console.log(this.nodeMap[ this.keyByRowCol(n.row, col) ]);
-                    n.east = this.nodeMap[ this.keyByRowCol(n.row, col) ];
-                    n.edgeCount++;
-                }
-            }
-
-            for (let col = n.col + 1; col < this.state[0].length; col++) {
-                if (this.state[n.row][col] >= '1' && this.state[n.row][col] <= '6') {
-                    n.west = this.nodeMap[ this.keyByRowCol(n.row, col) ];
-                    n.edgeCount++;
-                }
-            }
-
-            for (let row = n.row - 1; row >= 0; row--) {
-                if (this.state[row][n.col] >= '1' && this.state[row][n.col] <= '6') {
-                    n.north = this.nodeMap[ this.keyByRowCol(row, n.col) ];
-                    n.edgeCount++;
-                }
-            }
-            
-            for (let row = n.row + 1; row < this.state.length; row++) {
-                if (this.state[row][n.col] >= '1' && this.state[row][n.col] <= '6') {
-                    n.south = this.nodeMap[ this.keyByRowCol(row, n.col) ];
-                    n.edgeCount++;
-                }
-            } 
-        };
     }
 }
 

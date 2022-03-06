@@ -43,8 +43,6 @@ const splitIntoPuzzles = (contents: string[]) => {
     '3..2...',
     '..2...3'
 */
-const EMPTY_CELL_VALUE = '.';
-const SINGLE_CONNECTION_VALUE = '-';
 const DOUBLE_CONNECTION_VALUE = '=';
 
 interface PuzzleNode {
@@ -55,7 +53,6 @@ interface PuzzleNode {
     west: number | null;
     north: number | null;
     south: number | null;
-    edgeCount: number;
     connections: number;
 }
 
@@ -79,6 +76,12 @@ function multiDimRepeat<T>(value: T, rowCount: number, colCount: number): T[][] 
     return arr;
 }
 
+const EMPTY_CELL_VALUE = '.';
+const VERTICAL_SINGLE_BRIDGE_CHAR = '|';
+const VERTICAL_DOUBLE_BRIDGE_CHAR = "\u2016";
+const HORIZONTAL_SINGLE_BRIDGE_CHAR = '-';
+const HORIZONTAL_DOUBLE_BRIDGE_CHAR = '=';
+
 class HashiGraph {
     state: StringState;
     nodes: PuzzleNode[];
@@ -94,6 +97,49 @@ class HashiGraph {
         this.adjMatrix = [];
     }
 
+    clone(): HashiGraph {
+        const g = new HashiGraph( this.computeUpdatedState() );
+
+        g.adjMatrix = this.cloneAdjMatrix();
+        this.cloneNodes(g);
+        return g;
+    }
+
+    isSolved(): boolean {
+        return this.nodes.every((n) => n.connections === 0);
+    }
+
+    computeUpdatedState(): StringState {
+        const width = this.state[0].length;
+        let updatedState = multiDimRepeat<string>(EMPTY_CELL_VALUE, this.state.length, width);
+        for (let n of this.nodes) {
+            updatedState[`${n.row}`][`${n.col}`] = n.connections;
+        }
+
+        // add bridges
+        for (let n of this.nodes) {
+            if (n.north && this.adjMatrix[n.index][n.north] > 1) {
+                // '|' or \u20166
+                const bridgeCount = this.adjMatrix[n.index][n.north] - 1;
+                const northNode = this.nodes[n.north];
+                for (let r = n.row - 1; r > northNode.row ; r--) {
+                    updatedState[r][n.col] = bridgeCount === 1 ? VERTICAL_SINGLE_BRIDGE_CHAR : VERTICAL_DOUBLE_BRIDGE_CHAR; 
+                }
+            }
+
+            if (n.west && this.adjMatrix[n.index][n.west] > 1) {
+                // '=' or '-'
+                const bridgeCount = this.adjMatrix[n.index][n.west] - 1;
+                const westNode = this.nodes[n.west];
+                for (let c = n.col - 1; c > westNode.col ; c--) {
+                    updatedState[n.row][c] = bridgeCount === 1 ? HORIZONTAL_SINGLE_BRIDGE_CHAR : HORIZONTAL_DOUBLE_BRIDGE_CHAR; 
+                }
+            }
+        }
+
+        return updatedState.map((r) => r.join(''));
+    }
+
     addNode(node: PuzzleNode) {
         this.nodes.push(node);
         this.updateNodeCache(node, this.nodes.length - 1);
@@ -103,7 +149,7 @@ class HashiGraph {
         this.nodeCache[ this.keyByNode(node) ] = idx;
     }
 
-    getNodeAt(row, col): PuzzleNode {
+    getNodeAt(row: number, col: number): PuzzleNode {
         return this.nodes[ this.getNodeIndexAt(row, col) ];
     }
 
@@ -119,6 +165,10 @@ class HashiGraph {
 
     findWestNode(n: PuzzleNode) {
         for (let col = n.col - 1; col >= 0; col--) {
+            if (this.isBridgeChar(this.state[n.row][col])) {
+                return null;
+            }
+
             if (this.state[n.row][col] >= '1' && this.state[n.row][col] <= '6') {
                 return this.getNodeAt(n.row, col);
             }
@@ -129,6 +179,10 @@ class HashiGraph {
 
     findEastNode(n: PuzzleNode) {
         for (let col = n.col + 1; col < this.state[0].length; col++) {
+            if (this.isBridgeChar(this.state[n.row][col])) {
+                return null;
+            }
+
             if (this.state[n.row][col] >= '1' && this.state[n.row][col] <= '6') {
                 return this.getNodeAt(n.row, col);
             }
@@ -139,6 +193,10 @@ class HashiGraph {
 
     findNorthNode(n: PuzzleNode) {
         for (let row = n.row - 1; row >= 0; row--) {
+            if (this.isBridgeChar(this.state[row][n.col])) {
+                return null;
+            }
+
             if (this.state[row][n.col] >= '1' && this.state[row][n.col] <= '6') {
                 return this.getNodeAt(row, n.col);
             }
@@ -149,6 +207,10 @@ class HashiGraph {
 
     findSouthNode(n: PuzzleNode) {
         for (let row = n.row + 1; row < this.state.length; row++) {
+            if (this.isBridgeChar(this.state[row][n.col])) {
+                return null;
+            }
+
             if (this.state[row][n.col] >= '1' && this.state[row][n.col] <= '6') {
                 return this.getNodeAt(row, n.col);
             }
@@ -169,7 +231,7 @@ class HashiGraph {
             const nodes = [];
             for (let col = 0; col < s.length; col++) {
                 if (g.isNodeCell(s[col])) {
-                    let n = {
+                    g.addNode({
                         index: g.nodes.length,
                         row: row,
                         col: col,
@@ -178,9 +240,7 @@ class HashiGraph {
                         west: null,
                         north: null,
                         south: null,
-                        edgeCount: 0
-                    };
-                    g.addNode(n);
+                    });
                 }
             };
 
@@ -231,10 +291,6 @@ class HashiGraph {
         return g;
     }
 
-    private isNodeCell(c: string): boolean {
-        return c != EMPTY_CELL_VALUE && c != SINGLE_CONNECTION_VALUE && c != DOUBLE_CONNECTION_VALUE;
-    }
-
     keyByNode(n: PuzzleNode) {
         return this.keyByRowCol(n.row, n.col);
     }
@@ -249,6 +305,7 @@ class HashiGraph {
             return;
         }
 
+        console.log(`srcNodeIndex = ${srcNodeIndex}, destNodeIndex = ${destNodeIndex}, bridgeCount = ${bridgeCount}`);
         this.adjMatrix[srcNodeIndex][destNodeIndex] = bridgeCount + 1;
         this.nodes[srcNodeIndex].connections -= bridgeCount;
 
@@ -281,31 +338,30 @@ class HashiGraph {
     }
 
     computeAllLayoutNumbers(node: PuzzleNode): string[] {
+        /*
+            adjCount = 2
+            connections = 3
+            [12, 21]
+
+            adjCount = 3
+            connections = 5
+            [122, 212, 221]
+
+            adjCount = 3
+            connections = 4
+            [112, 121, 211, 022, 202, 220]
+
+            adjCount = 2
+            connections = 5
+            [] // impossible to satisfy
+        */
         const adjCount = +!!(node.east || node.east === 0) + 
                          +!!(node.west || node.west === 0) +
                          +!!(node.north || node.north === 0) +
                          +!!(node.south || node.south === 0);
 
-    /*
-        adjCount = 2
-        connections = 3
-        [12, 21]
-
-        adjCount = 3
-        connections = 5
-        [122, 212, 221]
-
-        adjCount = 3
-        connections = 4
-        [112, 121, 211, 022, 202, 220]
-
-        adjCount = 2
-        connections = 5
-        [] // impossible to satisfy
-    */
 
         const encodings = this.computeCombos_recur(node.connections, adjCount, adjCount, '');
-        console.log('encodings =', encodings);
         return encodings.map((e) => {
             const chars = e.split('');
             let normalized: string[] = ['0', '0', '0', '0'];
@@ -352,6 +408,29 @@ class HashiGraph {
 
         return encodings;
     }
+
+    private isNodeCell(c: string): boolean {
+        return c >= '1' && c <= '6';
+        // return c != EMPTY_CELL_VALUE && c != HORIZONTAL_SINGLE_BRIDGE_CHAR && c != HORIZONTAL_DOUBLE_BRIDGE_CHAR;
+    }
+
+    private isBridgeChar(ch: string): boolean {
+        return [VERTICAL_SINGLE_BRIDGE_CHAR, VERTICAL_DOUBLE_BRIDGE_CHAR, HORIZONTAL_SINGLE_BRIDGE_CHAR, HORIZONTAL_DOUBLE_BRIDGE_CHAR].includes(ch);
+    }
+
+    private cloneAdjMatrix(): number[][] {
+        const cloned = [];
+        for (let row of this.adjMatrix) {
+            cloned.push( row.slice() );
+        }
+        return cloned;
+    }
+
+    private cloneNodes(g: HashiGraph) {
+        for (let n of this.nodes) {
+            g.addNode({ ...n }); // shallow clone
+        }
+    }
 }
 
 // N E S W (clockwise)
@@ -367,14 +446,30 @@ class HashiSolver {
         console.log(this.initialState);
 
         const g: HashiGraph = HashiGraph.fromState(this.initialState);
-        const node = g.nodes[7]; // g.getNodeWithLowestBridges();
+        let node = g.nodes[5]; // g.getNodeWithLowestBridges();
         console.log(node);
         const layoutEncodings = g.computeAllLayoutNumbers(node);
         console.log(layoutEncodings);
 
-        for (let encoding in layoutEncodings) {
-            g.applyLayoutEncoding(node, encoding);
-        }
+        console.log('Applying this layout encoding:', layoutEncodings[0]);
+        // for (let encoding of layoutEncodings) {
+        //     g.applyLayoutEncoding(node, encoding);
+        // }
+        g.applyLayoutEncoding(node, layoutEncodings[0])
+        console.log(g.computeUpdatedState());
+
+        console.log('----------------------------------');
+
+        const clonedGraph = g.clone();
+        console.log(clonedGraph.state);
+        node = clonedGraph.nodes[6];
+        //console.log(clonedGraph.adjMatrix);
+        console.log(node);
+        const e = g.computeAllLayoutNumbers(node);
+        console.log(e);
+        console.log('Applying this layout encoding:', e[0]);
+        clonedGraph.applyLayoutEncoding(node, e[0])
+        console.log(g.computeUpdatedState());
 
         // g.applyLayoutEncoding(node, layoutEncodes[0]);
 

@@ -43,7 +43,6 @@ const splitIntoPuzzles = (contents: string[]) => {
     '3..2...',
     '..2...3'
 */
-const DOUBLE_CONNECTION_VALUE = '=';
 
 interface PuzzleNode {
     index: number;
@@ -82,11 +81,18 @@ const VERTICAL_DOUBLE_BRIDGE_CHAR = "\u2016";
 const HORIZONTAL_SINGLE_BRIDGE_CHAR = '-';
 const HORIZONTAL_DOUBLE_BRIDGE_CHAR = '=';
 
+const GRAPH_NO_CONNECTION = 0;
+const GRAPH_CONNECTION_NO_BRIDGE = 1;
+const GRAPH_CONNECTION_SINGLE_BRIDGE = 2;
+const GRAPH_CONNECTION_DOUBLE_BRIDGE = 3;
+const MAX_BRIDGES_BETWEEN_NODES = 2;
+type HashiEdgeWeight = 0 | 1 | 2 | 3;
+
 class HashiGraph {
     state: StringState;
     nodes: PuzzleNode[];
 
-    adjMatrix: number[][];
+    adjMatrix: HashiEdgeWeight[][];
 
     // node cache
     private nodeCache: { [key: string]: number; } = {};
@@ -118,21 +124,19 @@ class HashiGraph {
 
         // add bridges
         for (let n of this.nodes) {
-            if (n.north && this.adjMatrix[n.index][n.north] > 1) {
-                // '|' or \u20166
+            if (n.north && this.adjMatrix[n.index][n.north] > GRAPH_CONNECTION_NO_BRIDGE) {
                 const bridgeCount = this.adjMatrix[n.index][n.north] - 1;
                 const northNode = this.nodes[n.north];
                 for (let r = n.row - 1; r > northNode.row ; r--) {
-                    updatedState[r][n.col] = bridgeCount === 1 ? VERTICAL_SINGLE_BRIDGE_CHAR : VERTICAL_DOUBLE_BRIDGE_CHAR; 
+                    updatedState[r][n.col] = bridgeCount === GRAPH_CONNECTION_NO_BRIDGE ? VERTICAL_SINGLE_BRIDGE_CHAR : VERTICAL_DOUBLE_BRIDGE_CHAR;
                 }
             }
 
-            if (n.west && this.adjMatrix[n.index][n.west] > 1) {
-                // '=' or '-'
+            if (n.west && this.adjMatrix[n.index][n.west] > GRAPH_CONNECTION_NO_BRIDGE) {
                 const bridgeCount = this.adjMatrix[n.index][n.west] - 1;
                 const westNode = this.nodes[n.west];
                 for (let c = n.col - 1; c > westNode.col ; c--) {
-                    updatedState[n.row][c] = bridgeCount === 1 ? HORIZONTAL_SINGLE_BRIDGE_CHAR : HORIZONTAL_DOUBLE_BRIDGE_CHAR; 
+                    updatedState[n.row][c] = bridgeCount === 1 ? HORIZONTAL_SINGLE_BRIDGE_CHAR : HORIZONTAL_DOUBLE_BRIDGE_CHAR;
                 }
             }
         }
@@ -247,7 +251,7 @@ class HashiGraph {
             return nodes;
         });
 
-        g.adjMatrix = multiDimRepeat(0, g.nodes.length, g.nodes.length);
+        g.adjMatrix = multiDimRepeat(GRAPH_NO_CONNECTION, g.nodes.length, g.nodes.length);
 
         // create edges (up to 4, one for each cardinal direction)
         // => 0 means no connection between the nodes
@@ -258,32 +262,32 @@ class HashiGraph {
             const east = g.findEastNode(n);
             if (east) {
                 const eastIdx = g.getNodeIndexAt(east.row, east.col);
-                g.adjMatrix[idx][eastIdx] = 1;
-                g.adjMatrix[eastIdx][idx] = 1;
+                g.adjMatrix[idx][eastIdx] = GRAPH_CONNECTION_NO_BRIDGE;
+                g.adjMatrix[eastIdx][idx] = GRAPH_CONNECTION_NO_BRIDGE;
                 n.east = eastIdx;
             }
 
             const west = g.findWestNode(n);
             if (west) {
                 const westIdx = g.getNodeIndexAt(west.row, west.col);
-                g.adjMatrix[idx][westIdx] = 1;
-                g.adjMatrix[westIdx][idx] = 1;
+                g.adjMatrix[idx][westIdx] = GRAPH_CONNECTION_NO_BRIDGE;
+                g.adjMatrix[westIdx][idx] = GRAPH_CONNECTION_NO_BRIDGE;
                 n.west = westIdx;
             }
 
             const north = g.findNorthNode(n);
             if (north) {
                 const northIdx = g.getNodeIndexAt(north.row, north.col);
-                g.adjMatrix[idx][northIdx] = 1;
-                g.adjMatrix[northIdx][idx] = 1;
+                g.adjMatrix[idx][northIdx] = GRAPH_CONNECTION_NO_BRIDGE;
+                g.adjMatrix[northIdx][idx] = GRAPH_CONNECTION_NO_BRIDGE;
                 n.north = northIdx;
             }
 
             const south = g.findSouthNode(n);
             if (south) {
                 const southIdx = g.getNodeIndexAt(south.row, south.col);
-                g.adjMatrix[idx][southIdx] = 1;
-                g.adjMatrix[southIdx][idx] = 1;
+                g.adjMatrix[idx][southIdx] = GRAPH_CONNECTION_NO_BRIDGE;
+                g.adjMatrix[southIdx][idx] = GRAPH_CONNECTION_NO_BRIDGE;
                 n.south = southIdx;
             }
         });
@@ -299,17 +303,21 @@ class HashiGraph {
         return `[${row},${col}]`;
     }
 
-    createBridgeBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: number) {
-        // if the two nodes are not actuallly connected
+    createBridgeBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: HashiEdgeWeight) {
+        if (bridgeCount > MAX_BRIDGES_BETWEEN_NODES) {
+            return;
+        }
+
+        // if the two nodes are not connected
         if (this.adjMatrix[srcNodeIndex][destNodeIndex] === 0 && this.adjMatrix[destNodeIndex][srcNodeIndex] === 0) {
             return;
         }
 
         console.log(`srcNodeIndex = ${srcNodeIndex}, destNodeIndex = ${destNodeIndex}, bridgeCount = ${bridgeCount}`);
-        this.adjMatrix[srcNodeIndex][destNodeIndex] = bridgeCount + 1;
+        this.adjMatrix[srcNodeIndex][destNodeIndex] = (bridgeCount + 1) as HashiEdgeWeight;
         this.nodes[srcNodeIndex].connections -= bridgeCount;
 
-        this.adjMatrix[destNodeIndex][srcNodeIndex] = bridgeCount + 1;
+        this.adjMatrix[destNodeIndex][srcNodeIndex] = (bridgeCount + 1) as HashiEdgeWeight;
         this.nodes[destNodeIndex].connections -= bridgeCount; 
     }
 
@@ -317,23 +325,23 @@ class HashiGraph {
         const srcNodeIndex = node.index;
 
         if (node.north && encoding[0] != '0') {
-            const bridgeCount = parseInt(encoding[0], 10);
+            const bridgeCount = parseInt(encoding[0], 10) as HashiEdgeWeight;
             this.createBridgeBetween(srcNodeIndex, node.north, bridgeCount);
         }
 
         if (node.east && encoding[1] != '0') {
             const bridgeCount = parseInt(encoding[1], 10);
-            this.createBridgeBetween(srcNodeIndex, node.east, bridgeCount);
+            this.createBridgeBetween(srcNodeIndex, node.east, bridgeCount as HashiEdgeWeight);
         }
 
         if (node.south && encoding[2] != '0') {
             const bridgeCount = parseInt(encoding[2], 10);
-            this.createBridgeBetween(srcNodeIndex, node.south, bridgeCount);
+            this.createBridgeBetween(srcNodeIndex, node.south, bridgeCount as HashiEdgeWeight);
         }
 
         if (node.west && encoding[3] != '0') {
             const bridgeCount = parseInt(encoding[3], 10);
-            this.createBridgeBetween(srcNodeIndex, node.west, bridgeCount);
+            this.createBridgeBetween(srcNodeIndex, node.west, bridgeCount as HashiEdgeWeight);
         }
     }
 
@@ -411,14 +419,13 @@ class HashiGraph {
 
     private isNodeCell(c: string): boolean {
         return c >= '1' && c <= '6';
-        // return c != EMPTY_CELL_VALUE && c != HORIZONTAL_SINGLE_BRIDGE_CHAR && c != HORIZONTAL_DOUBLE_BRIDGE_CHAR;
     }
 
     private isBridgeChar(ch: string): boolean {
         return [VERTICAL_SINGLE_BRIDGE_CHAR, VERTICAL_DOUBLE_BRIDGE_CHAR, HORIZONTAL_SINGLE_BRIDGE_CHAR, HORIZONTAL_DOUBLE_BRIDGE_CHAR].includes(ch);
     }
 
-    private cloneAdjMatrix(): number[][] {
+    private cloneAdjMatrix(): HashiEdgeWeight[][] {
         const cloned = [];
         for (let row of this.adjMatrix) {
             cloned.push( row.slice() );

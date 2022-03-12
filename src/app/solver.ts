@@ -86,13 +86,18 @@ const GRAPH_CONNECTION_NO_BRIDGE = 1;
 const GRAPH_CONNECTION_SINGLE_BRIDGE = 2;
 const GRAPH_CONNECTION_DOUBLE_BRIDGE = 3;
 const MAX_BRIDGES_BETWEEN_NODES = 2;
-type HashiEdgeWeight = 0 | 1 | 2 | 3;
+
+// Usage of this type won't work when the values won't be resolved until run-time
+// TypeScript only performs static type checking at compile time. When it's compiled
+// into vanilla-Javascript ALL type information is discarded. This type which tries to
+// restrict an edge to a specific range of values does NOTHING!
+// type number = 0 | 1 | 2 | 3;
 
 class HashiGraph {
     state: StringState;
     nodes: PuzzleNode[];
 
-    adjMatrix: HashiEdgeWeight[][];
+    adjMatrix: number[][];
 
     // node cache
     private nodeCache: { [key: string]: number; } = {};
@@ -303,8 +308,15 @@ class HashiGraph {
         return `[${row},${col}]`;
     }
 
-    createBridgeBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: HashiEdgeWeight) {
-        if (bridgeCount > MAX_BRIDGES_BETWEEN_NODES) {
+    atBridgeCapacity(nodeIndex: number, otherNodeIndex: number, additionalBridges: number): boolean {
+        const node = this.nodes[nodeIndex];
+        const otherNode = this.nodes[otherNodeIndex];
+        return node.connections - additionalBridges < 0 || otherNode.connections - additionalBridges < 0;
+    }
+
+    // This call is a no-op if the desired number of bridges couldn't be added between the two nodes
+    addBridgesBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: number) {
+        if (bridgeCount === 0) {
             return;
         }
 
@@ -313,36 +325,78 @@ class HashiGraph {
             return;
         }
 
-        console.log(`srcNodeIndex = ${srcNodeIndex}, destNodeIndex = ${destNodeIndex}, bridgeCount = ${bridgeCount}`);
-        this.adjMatrix[srcNodeIndex][destNodeIndex] = (bridgeCount + 1) as HashiEdgeWeight;
+        const srcBridgeCountAfter = this.adjMatrix[srcNodeIndex][destNodeIndex] - 1 + bridgeCount;
+        const destBridgeCountAfter = this.adjMatrix[destNodeIndex][srcNodeIndex] - 1 + bridgeCount;
+        if (srcBridgeCountAfter > MAX_BRIDGES_BETWEEN_NODES || destBridgeCountAfter > MAX_BRIDGES_BETWEEN_NODES) {
+            return;
+        }
+
+        // console.log(`srcNodeIndex = ${srcNodeIndex}, destNodeIndex = ${destNodeIndex}, bridgeCount = ${bridgeCount}`);
+        this.adjMatrix[srcNodeIndex][destNodeIndex] += bridgeCount;
         this.nodes[srcNodeIndex].connections -= bridgeCount;
 
-        this.adjMatrix[destNodeIndex][srcNodeIndex] = (bridgeCount + 1) as HashiEdgeWeight;
+        this.adjMatrix[destNodeIndex][srcNodeIndex] += bridgeCount;
         this.nodes[destNodeIndex].connections -= bridgeCount; 
     }
 
-    applyLayoutEncoding(node: PuzzleNode, encoding: string) {
-        const srcNodeIndex = node.index;
+    canEncodingBeApplied(node: PuzzleNode, encoding: string): boolean {
+        const bridges = encoding.split('').map((n) => parseInt(n, 10));
+        let canApplyToNorth = !node.north || !this.atBridgeCapacity(node.index, node.north, bridges[0]);
+        let canApplyToEast = !node.east || !this.atBridgeCapacity(node.index, node.east, bridges[1]);
+        let canApplyToSouth = !node.south || !this.atBridgeCapacity(node.index, node.south, bridges[2]);
+        let canApplyToWest = !node.west || !this.atBridgeCapacity(node.index, node.west, bridges[3]);
+
+        return canApplyToNorth && canApplyToEast && canApplyToSouth && canApplyToWest;
+    }
+
+    // @return [boolean] -> if layout encoding was successfully applied or not
+    applyLayoutEncoding(node: PuzzleNode, encoding: string): boolean {
+        // consider an empty encoding as unsuccessfully applied
+        if (encoding === '0000') {
+            return false;
+        }
+
+        if (!this.canEncodingBeApplied(node, encoding)) {
+            return false;
+        }
 
         if (node.north && encoding[0] != '0') {
-            const bridgeCount = parseInt(encoding[0], 10) as HashiEdgeWeight;
-            this.createBridgeBetween(srcNodeIndex, node.north, bridgeCount);
+            const bridgeCount = parseInt(encoding[0], 10);
+            if (this.atBridgeCapacity(node.index, node.north, bridgeCount)) {
+                return false;
+            }
+
+            this.addBridgesBetween(node.index, node.north, bridgeCount);
         }
 
         if (node.east && encoding[1] != '0') {
             const bridgeCount = parseInt(encoding[1], 10);
-            this.createBridgeBetween(srcNodeIndex, node.east, bridgeCount as HashiEdgeWeight);
+            if (this.atBridgeCapacity(node.index, node.east, bridgeCount)) {
+                return false;
+            }
+
+            this.addBridgesBetween(node.index, node.east, bridgeCount);
         }
 
         if (node.south && encoding[2] != '0') {
             const bridgeCount = parseInt(encoding[2], 10);
-            this.createBridgeBetween(srcNodeIndex, node.south, bridgeCount as HashiEdgeWeight);
+            if (this.atBridgeCapacity(node.index, node.south, bridgeCount)) {
+                return false;
+            }
+
+            this.addBridgesBetween(node.index, node.south, bridgeCount);
         }
 
         if (node.west && encoding[3] != '0') {
             const bridgeCount = parseInt(encoding[3], 10);
-            this.createBridgeBetween(srcNodeIndex, node.west, bridgeCount as HashiEdgeWeight);
+            if (this.atBridgeCapacity(node.index, node.west, bridgeCount)) {
+                return false;
+            }
+
+            this.addBridgesBetween(node.index, node.west, bridgeCount);
         }
+
+        return true;
     }
 
     computeAllLayoutNumbers(node: PuzzleNode): string[] {
@@ -425,7 +479,7 @@ class HashiGraph {
         return [VERTICAL_SINGLE_BRIDGE_CHAR, VERTICAL_DOUBLE_BRIDGE_CHAR, HORIZONTAL_SINGLE_BRIDGE_CHAR, HORIZONTAL_DOUBLE_BRIDGE_CHAR].includes(ch);
     }
 
-    private cloneAdjMatrix(): HashiEdgeWeight[][] {
+    private cloneAdjMatrix(): number[][] {
         const cloned = [];
         for (let row of this.adjMatrix) {
             cloned.push( row.slice() );
@@ -462,7 +516,8 @@ class HashiSolver {
         // for (let encoding of layoutEncodings) {
         //     g.applyLayoutEncoding(node, encoding);
         // }
-        g.applyLayoutEncoding(node, layoutEncodings[0])
+        let success = g.applyLayoutEncoding(node, layoutEncodings[0])
+        console.log('Application', success ? 'successful.' : 'failed.');
         console.log(g.computeUpdatedState());
 
         console.log('----------------------------------');
@@ -472,11 +527,13 @@ class HashiSolver {
         node = clonedGraph.nodes[6];
         //console.log(clonedGraph.adjMatrix);
         console.log(node);
-        const e = g.computeAllLayoutNumbers(node);
+        const e = clonedGraph.computeAllLayoutNumbers(node);
         console.log(e);
         console.log('Applying this layout encoding:', e[0]);
-        clonedGraph.applyLayoutEncoding(node, e[0])
-        console.log(g.computeUpdatedState());
+        success = clonedGraph.applyLayoutEncoding(node, e[0])
+        console.log('Application', success ? 'successful.' : 'failed.');
+
+        console.log(clonedGraph.computeUpdatedState());
 
         // g.applyLayoutEncoding(node, layoutEncodes[0]);
 

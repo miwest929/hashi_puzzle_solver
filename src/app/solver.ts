@@ -52,6 +52,7 @@ interface PuzzleNode {
     west: number | null;
     north: number | null;
     south: number | null;
+    originalConnections: number;
     connections: number;
 }
 
@@ -120,11 +121,19 @@ class HashiGraph {
         return this.nodes.every((n) => n.connections === 0);
     }
 
-    computeUpdatedState(): StringState {
+    showSolutionState(): StringState {
+        if (!this.isSolved()) {
+            return [];
+        }
+
+        return this.computeUpdatedState(false);
+    }
+
+    computeUpdatedState(showConnectionsRemaining: boolean = true): StringState {
         const width = this.state[0].length;
         let updatedState = multiDimRepeat<string>(EMPTY_CELL_VALUE, this.state.length, width);
         for (let n of this.nodes) {
-            updatedState[`${n.row}`][`${n.col}`] = n.connections;
+            updatedState[`${n.row}`][`${n.col}`] = showConnectionsRemaining ? n.connections : n.originalConnections;
         }
 
         // add bridges
@@ -245,6 +254,7 @@ class HashiGraph {
                         row: row,
                         col: col,
                         connections: parseInt(s[col], 10),
+                        originalConnections: parseInt(s[col], 10),
                         east: null,
                         west: null,
                         north: null,
@@ -311,11 +321,6 @@ class HashiGraph {
     atBridgeCapacity(nodeIndex: number, otherNodeIndex: number, additionalBridges: number): boolean {
         const node = this.nodes[nodeIndex];
         const otherNode = this.nodes[otherNodeIndex];
-        if (otherNodeIndex === 2 && nodeIndex === 3 && additionalBridges === 1) {
-            console.log('INSIDE atBridgeCapacity');
-            console.log(node);
-            console.log(otherNode);
-        }
         return node.connections - additionalBridges < 0 || otherNode.connections - additionalBridges < 0;
     }
 
@@ -382,7 +387,6 @@ class HashiGraph {
 
         if ((node.west || node.west === 0) && encoding[3] != '0') {
             const bridgeCount = parseInt(encoding[3], 10);
-            console.log("ADDING WEST BRIDGE....");
             this.addBridgesBetween(node.index, node.west, bridgeCount);
         }
 
@@ -502,32 +506,35 @@ class HashiSolver {
         const states = [g];
         let puzzleIsSolved = false;
         while (!puzzleIsSolved && states.length > 0) { // (g.isSolved()) {
+            // console.log("====================================================================");
             const nextGraph = states.shift();
-            console.log("===================================");
-            console.log(nextGraph.state);
+            if (nextGraph.isSolved()) {
+                console.log("STATE IS SOLVED");
+                console.log(nextGraph.showSolutionState());
+                return;
+            }
+            iterations++;
+            
+            // console.log(nextGraph.state);
             const nextNode = nextGraph.getNodeWithLowestBridges();
-            console.log(nextNode);
             if (!nextNode) {
                 return;
             }
             const encodings = nextGraph.computeAllLayoutNumbers(nextNode);
-            console.log(encodings);
             for(let e of encodings) {
                 let newGraph = nextGraph.clone();
-                console.log('---------------------------------------------------------------');
-                console.log('Applying this layout encoding:', e);
                 const success = newGraph.applyLayoutEncoding(nextNode, e);
-                console.log('Application', success ? 'successful.' : 'failed.');
                 if (success) {
                     puzzleIsSolved = nextGraph.isSolved();
-                    console.log('~~~~~~~~~~~~~~~~state after application~~~~~~~~~~~~~~~~');
-                    console.log(newGraph.state);
+                    if (puzzleIsSolved) {
+                        console.log('Found solution after processing', iterations, ' states.');
+                    }
                     states.push(newGraph);
                 }
-                iterations++;
-                console.log('---------------------------------------------------------------');
+                // console.log("====================================================================");
             }
         }
+
     }
 
     solveExperimental() {
@@ -554,35 +561,6 @@ class HashiSolver {
         success = g.applyLayoutEncoding(node, layoutEncodings[3])
         console.log('Application', success ? 'successful.' : 'failed.');
         console.log(g.computeUpdatedState());
-
-
-        // const clonedGraph = g.clone();
-        // console.log(clonedGraph.state);
-        // node = clonedGraph.nodes[6];
-        // console.log(node);
-        // const e = clonedGraph.computeAllLayoutNumbers(node);
-        // console.log(e);
-        // console.log('Applying this layout encoding:', e[0]);
-        // success = clonedGraph.applyLayoutEncoding(node, e[0])
-        // console.log('Application', success ? 'successful.' : 'failed.');
-
-        // console.log(clonedGraph.computeUpdatedState());
-
-        // g.applyLayoutEncoding(node, layoutEncodes[0]);
-
-        // console.log(g.computeAllLayoutNumbers(g.nodes[2]));
-
-        // console.log(g.computeCombos_recur(5, 3, 3, ''));
-        // four digit numbers where each digit is between 0 and 4 inclusively
-        // N E S W
-        // x y z w
-        // ex: 1010 implies that 1 bridge exists to its northern neighbor AND
-        //                       1 bridge exists to its southern neighbor
-        // summing every digit MUST equal the current node's connection count.
-
-        // g.createSingleConnection(lowestNode, lowestNode.east );
-
-        // const state = new PuzzleState(this.initialState);
     }
 }
 
@@ -590,7 +568,7 @@ const main = () => {
     const contents = loadFileAsLines('data/easy_puzzles.txt');
     const puzzles = splitIntoPuzzles(contents);
 
-    const solver = new HashiSolver(puzzles[0]);
+    const solver = new HashiSolver(puzzles[2]);
     solver.solve();
 
     // const solver2 = new HashiSolver([

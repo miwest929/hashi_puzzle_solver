@@ -505,19 +505,18 @@ class HashiSolver {
         const g: HashiGraph = HashiGraph.fromState(this.initialState);
         const states = [g];
         let puzzleIsSolved = false;
-        while (!puzzleIsSolved && states.length > 0) { // (g.isSolved()) {
-            // console.log("====================================================================");
+        while (!puzzleIsSolved && states.length > 0) {
             const nextGraph = states.shift();
             if (nextGraph.isSolved()) {
-                console.log("STATE IS SOLVED");
+                console.log("The puzzle was solved after processing", iterations, "states.");
                 console.log(nextGraph.showSolutionState());
                 return;
             }
             iterations++;
             
-            // console.log(nextGraph.state);
             const nextNode = nextGraph.getNodeWithLowestBridges();
             if (!nextNode) {
+                console.log('next node is null. Aborting!');
                 return;
             }
             const encodings = nextGraph.computeAllLayoutNumbers(nextNode);
@@ -531,7 +530,6 @@ class HashiSolver {
                     }
                     states.push(newGraph);
                 }
-                // console.log("====================================================================");
             }
         }
 
@@ -566,6 +564,7 @@ class HashiSolver {
 
 const main = () => {
     const contents = loadFileAsLines('data/easy_puzzles.txt');
+    // const contents = loadFileAsLines('data/hard_puzzles.txt');
     const puzzles = splitIntoPuzzles(contents);
 
     const solver = new HashiSolver(puzzles[2]);

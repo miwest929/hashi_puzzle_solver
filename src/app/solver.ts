@@ -539,13 +539,13 @@ class HashiSolver {
 }
 
 const main = () => {
-    const easyContents = loadFileAsLines('data/easy_puzzles.txt');
-    const mediumContents = loadFileAsLines('data/medium_puzzles.txt');
-    const hardContents = loadFileAsLines('data/hard_puzzles.txt');
+    const easyContents = loadFileAsLines('puzzles/easy');
+    const mediumContents = loadFileAsLines('puzzles/medium');
+    const hardContents = loadFileAsLines('puzzles/hard');
 
     const puzzles = splitIntoPuzzles(easyContents);
 
-    const solver = new HashiSolver(puzzles[3]);
+    const solver = new HashiSolver(puzzles[0]);
     solver.solve();
 
     // const solver2 = new HashiSolver([

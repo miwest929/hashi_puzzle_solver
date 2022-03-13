@@ -129,7 +129,7 @@ class HashiGraph {
 
         // add bridges
         for (let n of this.nodes) {
-            if (n.north && this.adjMatrix[n.index][n.north] > GRAPH_CONNECTION_NO_BRIDGE) {
+            if ((n.north || n.north === 0) && this.adjMatrix[n.index][n.north] > GRAPH_CONNECTION_NO_BRIDGE) {
                 const bridgeCount = this.adjMatrix[n.index][n.north] - 1;
                 const northNode = this.nodes[n.north];
                 for (let r = n.row - 1; r > northNode.row ; r--) {
@@ -137,7 +137,7 @@ class HashiGraph {
                 }
             }
 
-            if (n.west && this.adjMatrix[n.index][n.west] > GRAPH_CONNECTION_NO_BRIDGE) {
+            if ((n.west || n.west === 0) && this.adjMatrix[n.index][n.west] > GRAPH_CONNECTION_NO_BRIDGE) {
                 const bridgeCount = this.adjMatrix[n.index][n.west] - 1;
                 const westNode = this.nodes[n.west];
                 for (let c = n.col - 1; c > westNode.col ; c--) {
@@ -311,6 +311,11 @@ class HashiGraph {
     atBridgeCapacity(nodeIndex: number, otherNodeIndex: number, additionalBridges: number): boolean {
         const node = this.nodes[nodeIndex];
         const otherNode = this.nodes[otherNodeIndex];
+        if (otherNodeIndex === 2 && nodeIndex === 3 && additionalBridges === 1) {
+            console.log('INSIDE atBridgeCapacity');
+            console.log(node);
+            console.log(otherNode);
+        }
         return node.connections - additionalBridges < 0 || otherNode.connections - additionalBridges < 0;
     }
 
@@ -360,42 +365,28 @@ class HashiGraph {
             return false;
         }
 
-        if (node.north && encoding[0] != '0') {
+        if ((node.north || node.north === 0) && encoding[0] != '0') {
             const bridgeCount = parseInt(encoding[0], 10);
-            if (this.atBridgeCapacity(node.index, node.north, bridgeCount)) {
-                return false;
-            }
-
             this.addBridgesBetween(node.index, node.north, bridgeCount);
         }
 
-        if (node.east && encoding[1] != '0') {
+        if ((node.east || node.east === 0) && encoding[1] != '0') {
             const bridgeCount = parseInt(encoding[1], 10);
-            if (this.atBridgeCapacity(node.index, node.east, bridgeCount)) {
-                return false;
-            }
-
             this.addBridgesBetween(node.index, node.east, bridgeCount);
         }
 
-        if (node.south && encoding[2] != '0') {
+        if ((node.south || node.south === 0) && encoding[2] != '0') {
             const bridgeCount = parseInt(encoding[2], 10);
-            if (this.atBridgeCapacity(node.index, node.south, bridgeCount)) {
-                return false;
-            }
-
             this.addBridgesBetween(node.index, node.south, bridgeCount);
         }
 
-        if (node.west && encoding[3] != '0') {
+        if ((node.west || node.west === 0) && encoding[3] != '0') {
             const bridgeCount = parseInt(encoding[3], 10);
-            if (this.atBridgeCapacity(node.index, node.west, bridgeCount)) {
-                return false;
-            }
-
+            console.log("ADDING WEST BRIDGE....");
             this.addBridgesBetween(node.index, node.west, bridgeCount);
         }
 
+        this.state = this.computeUpdatedState();
         return true;
     }
 
@@ -506,34 +497,76 @@ class HashiSolver {
     solve() {
         console.log(this.initialState);
 
+        let iterations = 0;
         const g: HashiGraph = HashiGraph.fromState(this.initialState);
-        let node = g.nodes[5]; // g.getNodeWithLowestBridges();
+        const states = [g];
+        let puzzleIsSolved = false;
+        while (!puzzleIsSolved && states.length > 0) { // (g.isSolved()) {
+            const nextGraph = states.shift();
+            console.log("===================================");
+            console.log(nextGraph.state);
+            const nextNode = nextGraph.getNodeWithLowestBridges();
+            console.log(nextNode);
+            if (!nextNode) {
+                return;
+            }
+            const encodings = nextGraph.computeAllLayoutNumbers(nextNode);
+            console.log(encodings);
+            for(let e of encodings) {
+                let newGraph = nextGraph.clone();
+                console.log('---------------------------------------------------------------');
+                console.log('Applying this layout encoding:', e);
+                const success = newGraph.applyLayoutEncoding(nextNode, e);
+                console.log('Application', success ? 'successful.' : 'failed.');
+                if (success) {
+                    puzzleIsSolved = nextGraph.isSolved();
+                    console.log('~~~~~~~~~~~~~~~~state after application~~~~~~~~~~~~~~~~');
+                    console.log(newGraph.state);
+                    states.push(newGraph);
+                }
+                iterations++;
+                console.log('---------------------------------------------------------------');
+            }
+        }
+    }
+
+    solveExperimental() {
+        const g = HashiGraph.fromState(this.initialState);
+        console.log(g.state);
+        let node = g.nodes[1];
         console.log(node);
-        const layoutEncodings = g.computeAllLayoutNumbers(node);
+        let layoutEncodings = g.computeAllLayoutNumbers(node);
         console.log(layoutEncodings);
 
         console.log('Applying this layout encoding:', layoutEncodings[0]);
-        // for (let encoding of layoutEncodings) {
-        //     g.applyLayoutEncoding(node, encoding);
-        // }
         let success = g.applyLayoutEncoding(node, layoutEncodings[0])
         console.log('Application', success ? 'successful.' : 'failed.');
         console.log(g.computeUpdatedState());
 
         console.log('----------------------------------');
-
-        const clonedGraph = g.clone();
-        console.log(clonedGraph.state);
-        node = clonedGraph.nodes[6];
-        //console.log(clonedGraph.adjMatrix);
+        console.log('----------------------------------');
+        console.log(g.state);
+        node = g.nodes[4];
         console.log(node);
-        const e = clonedGraph.computeAllLayoutNumbers(node);
-        console.log(e);
-        console.log('Applying this layout encoding:', e[0]);
-        success = clonedGraph.applyLayoutEncoding(node, e[0])
+        layoutEncodings = g.computeAllLayoutNumbers(g.nodes[4]);
+        console.log(layoutEncodings);
+        console.log('Applying this layout encoding:', layoutEncodings[3]);
+        success = g.applyLayoutEncoding(node, layoutEncodings[3])
         console.log('Application', success ? 'successful.' : 'failed.');
+        console.log(g.computeUpdatedState());
 
-        console.log(clonedGraph.computeUpdatedState());
+
+        // const clonedGraph = g.clone();
+        // console.log(clonedGraph.state);
+        // node = clonedGraph.nodes[6];
+        // console.log(node);
+        // const e = clonedGraph.computeAllLayoutNumbers(node);
+        // console.log(e);
+        // console.log('Applying this layout encoding:', e[0]);
+        // success = clonedGraph.applyLayoutEncoding(node, e[0])
+        // console.log('Application', success ? 'successful.' : 'failed.');
+
+        // console.log(clonedGraph.computeUpdatedState());
 
         // g.applyLayoutEncoding(node, layoutEncodes[0]);
 
@@ -556,10 +589,20 @@ class HashiSolver {
 const main = () => {
     const contents = loadFileAsLines('data/easy_puzzles.txt');
     const puzzles = splitIntoPuzzles(contents);
-    // const state = new PuzzleState(puzzles[0]);
-    // state.solve();
+
     const solver = new HashiSolver(puzzles[0]);
     solver.solve();
+
+    // const solver2 = new HashiSolver([
+    //     '3.....1',
+    //     '...0-0|',
+    //     '2.5.4||',
+    //     '|....||',
+    //     '|...2||',
+    //     '0.5..2|',
+    //     '.0----0'
+    // ]);
+    //solver.solveExperimental();
 };
 
 main();

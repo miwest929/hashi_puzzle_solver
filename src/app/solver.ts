@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 
+// Below functions don't require any context
+// It's completely separated from the other entities presented in this file
 function loadFileAsLines(filepath: string): string[] {
     if (fs.readFileSync) {
         const contents = fs.readFileSync(filepath, 'utf8');
@@ -12,7 +14,6 @@ const splitIntoPuzzles = (contents: string[]) => {
     let puzzles: string[][] = [];
     let lineIdx = 0;
     while (lineIdx < contents.length) {
-        // console.log(contents[lineIdx]);
         const [rowsCountStr, colsCountStr] = contents[lineIdx].split(' ');
         const rowsCount = parseInt(rowsCountStr, 10);
         const colsCount = parseInt(colsCountStr, 10);
@@ -26,23 +27,13 @@ const splitIntoPuzzles = (contents: string[]) => {
 
             currPuzzle.push(currPuzzleLine);
         }
-        puzzles.push(currPuzzle);
 
+        puzzles.push(currPuzzle);
         lineIdx += 1 + rowsCount;
     }
 
     return puzzles;
 }
-
-/*
-    '.1.4..3',
-    '3.3....',
-    '.......',
-    '..1....',
-    '.......',
-    '3..2...',
-    '..2...3'
-*/
 
 interface PuzzleNode {
     index: number;
@@ -84,8 +75,6 @@ const HORIZONTAL_DOUBLE_BRIDGE_CHAR = '=';
 
 const GRAPH_NO_CONNECTION = 0;
 const GRAPH_CONNECTION_NO_BRIDGE = 1;
-const GRAPH_CONNECTION_SINGLE_BRIDGE = 2;
-const GRAPH_CONNECTION_DOUBLE_BRIDGE = 3;
 const MAX_BRIDGES_BETWEEN_NODES = 2;
 
 // Usage of this type won't work when the values won't be resolved until run-time
@@ -121,9 +110,9 @@ class HashiGraph {
         return this.nodes.every((n) => n.connections === 0);
     }
 
-    showSolutionState(): StringState {
+    showSolutionState(): StringState | null {
         if (!this.isSolved()) {
-            return [];
+            return null;
         }
 
         return this.computeUpdatedState(false);
@@ -161,10 +150,6 @@ class HashiGraph {
     addNode(node: PuzzleNode) {
         this.nodes.push(node);
         this.updateNodeCache(node, this.nodes.length - 1);
-    }
-
-    updateNodeCache(node: PuzzleNode, idx: number) {
-        this.nodeCache[ this.keyByNode(node) ] = idx;
     }
 
     getNodeAt(row: number, col: number): PuzzleNode {
@@ -325,36 +310,38 @@ class HashiGraph {
     }
 
     // This call is a no-op if the desired number of bridges couldn't be added between the two nodes
-    addBridgesBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: number) {
+    // @return [successful]
+    addBridgesBetween(srcNodeIndex: number, destNodeIndex: number, bridgeCount: number): boolean {
         if (bridgeCount === 0) {
-            return;
+            return false;
         }
 
         // if the two nodes are not connected
         if (this.adjMatrix[srcNodeIndex][destNodeIndex] === 0 && this.adjMatrix[destNodeIndex][srcNodeIndex] === 0) {
-            return;
+            return false;
         }
 
         const srcBridgeCountAfter = this.adjMatrix[srcNodeIndex][destNodeIndex] - 1 + bridgeCount;
         const destBridgeCountAfter = this.adjMatrix[destNodeIndex][srcNodeIndex] - 1 + bridgeCount;
         if (srcBridgeCountAfter > MAX_BRIDGES_BETWEEN_NODES || destBridgeCountAfter > MAX_BRIDGES_BETWEEN_NODES) {
-            return;
+            return false;
         }
 
-        // console.log(`srcNodeIndex = ${srcNodeIndex}, destNodeIndex = ${destNodeIndex}, bridgeCount = ${bridgeCount}`);
         this.adjMatrix[srcNodeIndex][destNodeIndex] += bridgeCount;
         this.nodes[srcNodeIndex].connections -= bridgeCount;
 
         this.adjMatrix[destNodeIndex][srcNodeIndex] += bridgeCount;
-        this.nodes[destNodeIndex].connections -= bridgeCount; 
+        this.nodes[destNodeIndex].connections -= bridgeCount;
+
+        return true;
     }
 
     canEncodingBeApplied(node: PuzzleNode, encoding: string): boolean {
         const bridges = encoding.split('').map((n) => parseInt(n, 10));
-        let canApplyToNorth = !node.north || !this.atBridgeCapacity(node.index, node.north, bridges[0]);
-        let canApplyToEast = !node.east || !this.atBridgeCapacity(node.index, node.east, bridges[1]);
-        let canApplyToSouth = !node.south || !this.atBridgeCapacity(node.index, node.south, bridges[2]);
-        let canApplyToWest = !node.west || !this.atBridgeCapacity(node.index, node.west, bridges[3]);
+        let canApplyToNorth = (!node.north && node.north !== 0) || !this.atBridgeCapacity(node.index, node.north, bridges[0]);
+        let canApplyToEast = (!node.east && node.east !== 0) || !this.atBridgeCapacity(node.index, node.east, bridges[1]);
+        let canApplyToSouth = (!node.south && node.south !== 0)|| !this.atBridgeCapacity(node.index, node.south, bridges[2]);
+        let canApplyToWest = (!node.west && node.west !== 0) || !this.atBridgeCapacity(node.index, node.west, bridges[3]);
 
         return canApplyToNorth && canApplyToEast && canApplyToSouth && canApplyToWest;
     }
@@ -395,23 +382,6 @@ class HashiGraph {
     }
 
     computeAllLayoutNumbers(node: PuzzleNode): string[] {
-        /*
-            adjCount = 2
-            connections = 3
-            [12, 21]
-
-            adjCount = 3
-            connections = 5
-            [122, 212, 221]
-
-            adjCount = 3
-            connections = 4
-            [112, 121, 211, 022, 202, 220]
-
-            adjCount = 2
-            connections = 5
-            [] // impossible to satisfy
-        */
         const adjCount = +!!(node.east || node.east === 0) + 
                          +!!(node.west || node.west === 0) +
                          +!!(node.north || node.north === 0) +
@@ -487,6 +457,11 @@ class HashiGraph {
             g.addNode({ ...n }); // shallow clone
         }
     }
+
+    private  updateNodeCache(node: PuzzleNode, idx: number) {
+        this.nodeCache[ this.keyByNode(node) ] = idx;
+    }
+
 }
 
 // N E S W (clockwise)
@@ -502,11 +477,12 @@ class HashiSolver {
         console.log(this.initialState);
 
         let iterations = 0;
-        const g: HashiGraph = HashiGraph.fromState(this.initialState);
-        const states = [g];
+        const states = [ HashiGraph.fromState(this.initialState) ];
+        // const states = [g];
         let puzzleIsSolved = false;
         while (!puzzleIsSolved && states.length > 0) {
             const nextGraph = states.shift();
+
             if (nextGraph.isSolved()) {
                 console.log("The puzzle was solved after processing", iterations, "states.");
                 console.log(nextGraph.showSolutionState());
@@ -563,11 +539,13 @@ class HashiSolver {
 }
 
 const main = () => {
-    const contents = loadFileAsLines('data/easy_puzzles.txt');
-    // const contents = loadFileAsLines('data/hard_puzzles.txt');
-    const puzzles = splitIntoPuzzles(contents);
+    const easyContents = loadFileAsLines('data/easy_puzzles.txt');
+    const mediumContents = loadFileAsLines('data/medium_puzzles.txt');
+    const hardContents = loadFileAsLines('data/hard_puzzles.txt');
 
-    const solver = new HashiSolver(puzzles[2]);
+    const puzzles = splitIntoPuzzles(easyContents);
+
+    const solver = new HashiSolver(puzzles[3]);
     solver.solve();
 
     // const solver2 = new HashiSolver([

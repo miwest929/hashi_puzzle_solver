@@ -48,6 +48,13 @@ interface PuzzleNode {
 }
 
 type StringState = string[];
+function display(state: StringState) {
+    console.log('');
+    for (let i = 0; i < state.length; i++) {
+        console.log(`"${state[i]}"`);
+    }
+    console.log('');
+}
 
 function arrayRepeat<T>(value: T, times: number): T[] {
 	let arr = [];
@@ -107,7 +114,7 @@ class HashiGraph {
     }
 
     isSolved(): boolean {
-        return this.nodes.every((n) => n.connections === 0);
+        return this.nodes.every((n) => n.connections === 0) // && this.isConnected();
     }
 
     showSolutionState(): StringState | null {
@@ -144,7 +151,7 @@ class HashiGraph {
             }
         }
 
-        return updatedState.map((r) => r.join(''));
+        return updatedState.map((r) => r.join(""));
     }
 
     addNode(node: PuzzleNode) {
@@ -220,10 +227,6 @@ class HashiGraph {
         }
         
         return null;
-    }
-
-    heuristicValue() {
-        return this.nodes.reduce((acc, n) => acc + n.connections, 0);
     }
 
     static fromState(state: StringState) {
@@ -381,6 +384,7 @@ class HashiGraph {
         return true;
     }
 
+    // N E S W (clockwise)
     computeAllLayoutNumbers(node: PuzzleNode): string[] {
         const adjCount = +!!(node.east || node.east === 0) + 
                          +!!(node.west || node.west === 0) +
@@ -436,6 +440,43 @@ class HashiGraph {
         return encodings;
     }
 
+    isConnected() {
+        const visited = this.dfs_iter(this.nodes[0]); // start from the first node
+        const allIndices = this.nodes.map(n => n.index);
+        const stillRemaining = allIndices.filter(x => !visited.includes(x));
+        return stillRemaining.length === 0;
+    }
+
+    // @return number[] : index of all nodes visited when performed a DFS starting from 'startNode'
+    private dfs_iter(startNode: PuzzleNode): number[] {
+        let s = [startNode.index];
+        let visited = [startNode.index];
+        while (s.length > 0) {
+            let nIdx = s.pop();
+            let v = this.nodes[nIdx];
+            if (!visited.includes(v.index)) {
+                visited.push(v.index);
+                if (v.north || v.north === 0) {
+                    s.push(v.north);
+                }
+
+                if (v.east || v.east === 0) {
+                    s.push(v.east);
+                }
+
+                if (v.south || v.south === 0) {
+                    s.push(v.south);
+                }
+
+                if (v.west || v.west === 0) {
+                    s.push(v.west);
+                }
+            }
+        }
+
+        return visited;
+    }
+
     private isNodeCell(c: string): boolean {
         return c >= '1' && c <= '6';
     }
@@ -464,8 +505,6 @@ class HashiGraph {
 
 }
 
-// N E S W (clockwise)
-
 class HashiSolver {
     initialState: StringState;
 
@@ -473,26 +512,30 @@ class HashiSolver {
         this.initialState = initialState;
     }
 
-    solve() {
-        console.log(this.initialState);
+    private displaySolution(g: HashiGraph) {
+        const solution = g.showSolutionState();
+        display(solution);
+    }
 
+    solve() {
         let iterations = 0;
+        display(this.initialState);
         const states = [ HashiGraph.fromState(this.initialState) ];
-        // const states = [g];
+
         let puzzleIsSolved = false;
         while (!puzzleIsSolved && states.length > 0) {
             const nextGraph = states.shift();
 
             if (nextGraph.isSolved()) {
                 console.log("The puzzle was solved after processing", iterations, "states.");
-                console.log(nextGraph.showSolutionState());
+                this.displaySolution(nextGraph);
                 return;
             }
             iterations++;
             
             const nextNode = nextGraph.getNodeWithLowestBridges();
             if (!nextNode) {
-                console.log('next node is null. Aborting!');
+                console.log(`next node is null. Processed ${iterations} states. Aborting!`);
                 return;
             }
             const encodings = nextGraph.computeAllLayoutNumbers(nextNode);
@@ -543,9 +586,9 @@ const main = () => {
     const mediumContents = loadFileAsLines('puzzles/medium');
     const hardContents = loadFileAsLines('puzzles/hard');
 
-    const puzzles = splitIntoPuzzles(easyContents);
+    const puzzles = splitIntoPuzzles(hardContents);
 
-    const solver = new HashiSolver(puzzles[0]);
+    const solver = new HashiSolver(puzzles[4]);
     solver.solve();
 
     // const solver2 = new HashiSolver([

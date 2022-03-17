@@ -524,7 +524,7 @@ class HashiSolver {
 
         let puzzleIsSolved = false;
         while (!puzzleIsSolved && states.length > 0) {
-            const nextGraph = states.shift();
+            const nextGraph = states.pop();
 
             if (nextGraph.isSolved()) {
                 console.log("The puzzle was solved after processing", iterations, "states.");

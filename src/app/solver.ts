@@ -1,40 +1,3 @@
-import * as fs from 'fs';
-
-// Below functions don't require any context
-// It's completely separated from the other entities presented in this file
-function loadFileAsLines(filepath: string): string[] {
-    if (fs.readFileSync) {
-        const contents = fs.readFileSync(filepath, 'utf8');
-        return contents.split("\n");
-    }
-    return [];
-}
-
-const splitIntoPuzzles = (contents: string[]) => {
-    let puzzles: string[][] = [];
-    let lineIdx = 0;
-    while (lineIdx < contents.length) {
-        const [rowsCountStr, colsCountStr] = contents[lineIdx].split(' ');
-        const rowsCount = parseInt(rowsCountStr, 10);
-        const colsCount = parseInt(colsCountStr, 10);
-
-        let currPuzzle = [];
-        for (let i = 1; i <= rowsCount; i++) {
-            const currPuzzleLine = contents[lineIdx + i];
-            if (currPuzzleLine.length != colsCount) {
-                throw new Error(`Row has incorrect number of columns, line ${lineIdx + i}: actual = ${currPuzzleLine.length}, expected = ${colsCount}`);
-            }
-
-            currPuzzle.push(currPuzzleLine);
-        }
-
-        puzzles.push(currPuzzle);
-        lineIdx += 1 + rowsCount;
-    }
-
-    return puzzles;
-}
-
 interface PuzzleNode {
     index: number;
     row: number;
@@ -48,7 +11,7 @@ interface PuzzleNode {
 }
 
 type StringState = string[];
-function display(state: StringState) {
+export function display(state: StringState) {
     console.log('');
     for (let i = 0; i < state.length; i++) {
         console.log(`"${state[i]}"`);
@@ -90,7 +53,7 @@ const MAX_BRIDGES_BETWEEN_NODES = 2;
 // restrict an edge to a specific range of values does NOTHING!
 // type number = 0 | 1 | 2 | 3;
 
-class HashiGraph {
+export class HashiGraph {
     state: StringState;
     nodes: PuzzleNode[];
 
@@ -505,7 +468,7 @@ class HashiGraph {
 
 }
 
-class HashiSolver {
+export class HashiSolver {
     initialState: StringState;
 
     constructor(initialState: StringState) {
@@ -519,6 +482,7 @@ class HashiSolver {
 
     solve() {
         let iterations = 0;
+        console.log('INSIDE solve()...');
         display(this.initialState);
         const states = [ HashiGraph.fromState(this.initialState) ];
 
@@ -538,7 +502,10 @@ class HashiSolver {
                 console.log(`next node is null. Processed ${iterations} states. Aborting!`);
                 return;
             }
+            // console.log(nextNode);
             const encodings = nextGraph.computeAllLayoutNumbers(nextNode);
+            // console.log(encodings);
+            // console.log('-------------------------');
             for(let e of encodings) {
                 let newGraph = nextGraph.clone();
                 const success = newGraph.applyLayoutEncoding(nextNode, e);
@@ -552,6 +519,7 @@ class HashiSolver {
             }
         }
 
+        console.log(`Ran out of states to process. Processed ${iterations} states.`);
     }
 
     solveExperimental() {
@@ -565,42 +533,20 @@ class HashiSolver {
         console.log('Applying this layout encoding:', layoutEncodings[0]);
         let success = g.applyLayoutEncoding(node, layoutEncodings[0])
         console.log('Application', success ? 'successful.' : 'failed.');
-        console.log(g.computeUpdatedState());
+        display(g.computeUpdatedState());
+        // console.log(g.computeUpdatedState());
 
         console.log('----------------------------------');
         console.log('----------------------------------');
-        console.log(g.state);
+        // console.log(g.state);
+        display(g.state);
         node = g.nodes[4];
         console.log(node);
         layoutEncodings = g.computeAllLayoutNumbers(g.nodes[4]);
         console.log(layoutEncodings);
-        console.log('Applying this layout encoding:', layoutEncodings[3]);
-        success = g.applyLayoutEncoding(node, layoutEncodings[3])
+        console.log('Applying this layout encoding:', layoutEncodings[0]);
+        success = g.applyLayoutEncoding(node, layoutEncodings[0])
         console.log('Application', success ? 'successful.' : 'failed.');
-        console.log(g.computeUpdatedState());
+        display(g.computeUpdatedState());
     }
 }
-
-const main = () => {
-    const easyContents = loadFileAsLines('puzzles/easy');
-    const mediumContents = loadFileAsLines('puzzles/medium');
-    const hardContents = loadFileAsLines('puzzles/hard');
-
-    const puzzles = splitIntoPuzzles(hardContents);
-
-    const solver = new HashiSolver(puzzles[4]);
-    solver.solve();
-
-    // const solver2 = new HashiSolver([
-    //     '3.....1',
-    //     '...0-0|',
-    //     '2.5.4||',
-    //     '|....||',
-    //     '|...2||',
-    //     '0.5..2|',
-    //     '.0----0'
-    // ]);
-    //solver.solveExperimental();
-};
-
-main();

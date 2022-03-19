@@ -6,4 +6,7 @@ Reference: https://www.conceptispuzzles.com/index.aspx?uri=puzzle/hashi
 `runTests`: `./node_modules/.bin/ts-node src/app/runTests.ts`\
 `mainCode`: `./node_modules/.bin/ts-node src/app/solver.ts`\
 
+## Next Steps
 
+<TODO>
+  

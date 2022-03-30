@@ -10,7 +10,7 @@ interface PuzzleNode {
     connections: number;
 }
 
-type StringState = string[];
+export type StringState = string[];
 export function display(state: StringState) {
     console.log('');
     for (let i = 0; i < state.length; i++) {
@@ -304,10 +304,17 @@ export class HashiGraph {
 
     canEncodingBeApplied(node: PuzzleNode, encoding: string): boolean {
         const bridges = encoding.split('').map((n) => parseInt(n, 10));
-        let canApplyToNorth = (!node.north && node.north !== 0) || !this.atBridgeCapacity(node.index, node.north, bridges[0]);
-        let canApplyToEast = (!node.east && node.east !== 0) || !this.atBridgeCapacity(node.index, node.east, bridges[1]);
-        let canApplyToSouth = (!node.south && node.south !== 0)|| !this.atBridgeCapacity(node.index, node.south, bridges[2]);
-        let canApplyToWest = (!node.west && node.west !== 0) || !this.atBridgeCapacity(node.index, node.west, bridges[3]);
+        let canApplyToNorth = (!node.north && node.north !== 0 || bridges[0] === 0) ||
+            !this.atBridgeCapacity(node.index, node.north, bridges[0]) && !this.anyObstructionsBetween(node, this.nodes[node.north]);
+    
+        let canApplyToEast = (!node.east && node.east !== 0 || bridges[1] === 0) ||
+            !this.atBridgeCapacity(node.index, node.east, bridges[1]) && !this.anyObstructionsBetween(node, this.nodes[node.east]);
+
+        let canApplyToSouth = (!node.south && node.south !== 0 || bridges[2] === 0) ||
+            !this.atBridgeCapacity(node.index, node.south, bridges[2]) && !this.anyObstructionsBetween(node, this.nodes[node.south]);
+
+        let canApplyToWest = (!node.west && node.west !== 0 || bridges[3] === 0) ||
+            !this.atBridgeCapacity(node.index, node.west, bridges[3]) && !this.anyObstructionsBetween(node, this.nodes[node.west]);
 
         return canApplyToNorth && canApplyToEast && canApplyToSouth && canApplyToWest;
     }
@@ -440,6 +447,27 @@ export class HashiGraph {
         return visited;
     }
 
+    private anyObstructionsBetween(n1: PuzzleNode, n2: PuzzleNode): boolean {
+        if ( (n1.row !== n2.row) && (n1.col !== n2.col) ) {
+            return true;
+        }
+
+        let pathBetween = '';
+        if (n1.row === n2.row) {
+            pathBetween = this.state[n1.row].slice(n1.col + 1, n2.col);
+        }
+
+        if (n1.col === n2.col) {
+            const startRow = Math.min(n1.row, n2.row);
+            const endRow = Math.max(n1.row, n2.row);
+            for (let i = startRow + 1; i < endRow; i++) {
+                pathBetween += this.state[i][n1.col];
+            }
+        }
+
+        return pathBetween.split('').some((ch) => this.isBridgeChar(ch));
+    }
+
     private isNodeCell(c: string): boolean {
         return c >= '1' && c <= '6';
     }
@@ -482,7 +510,6 @@ export class HashiSolver {
 
     solve() {
         let iterations = 0;
-        console.log('INSIDE solve()...');
         display(this.initialState);
         const states = [ HashiGraph.fromState(this.initialState) ];
 
